@@ -1,0 +1,544 @@
+---
+title: "Assignment1_GC_Markdown"
+
+date: "September 22, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{R}
+
+install.packages("C50")
+install.packages("rpart.plot")
+install.packages("ROCR")
+install.packages("randomForest")
+library(readxl)
+GC_F18 <- read_excel("C:/Gaurav/First Sem/IDS 572- Data Mining/Assignment/GermanCredit_assgt1_F18.xls")
+View(GC_F18)
+```
+
+
+```{R}
+
+summary(GC_F18)
+library('rpart')
+attributes(GC_F18)
+str(GC_F18)
+```
+
+```{R}
+
+###Converting columns to Categorical
+cols <- c("OBS#","CHK_ACCT","HISTORY","DURATION","NEW_CAR","FURNITURE",
+          "RADIO/TV","RETRAINING","EMPLOYMENT","SAV_ACCT",
+          "MALE_DIV","MALE_SINGLE","MALE_MAR_or_WID","CO-APPLICANT",
+          "GUARANTOR","PRESENT_RESIDENT","REAL_ESTATE",
+          "PROP_UNKN_NONE","OTHER_INSTALL","RENT","JOB",
+          "RESPONSE", "FOREIGN", "TELEPHONE", "OWN_RES")
+
+GC_F18[cols] <- lapply(GC_F18[cols], factor)
+sapply(GC_F18, class)
+GC_F18$X <- NULL
+str(GC_F18)
+
+GC_F18_data_par <- within(GC_F18, rm("OBS#",USED_CAR,NEW_CAR,FURNITURE,RETRAINING,EDUCATION)) ##Removing Columns
+GC_F18_data <-within(GC_F18_data_par,rm("RADIO/TV" ))
+str(GC_F18_data)
+summary(GC_F18_data)
+plot(GC_F18_data$RESPONSE)
+
+library(ggplot2)
+
+
+
+dat <- data.frame(table(GC_F18_data$FOREIGN,GC_F18_data$RESPONSE))
+names(dat) <- c("FOREIGN","RESPONSE","Count")
+ggplot(data=dat, aes(x=FOREIGN, y=Count, fill=RESPONSE)) + geom_bar(stat="identity")
+
+```
+
+
+```{R}
+
+#Decision Tree using entire data
+library(rpart.plot)
+library(rpart.plot)
+
+
+rpModel1=rpart(RESPONSE ~ ., data=GC_F18_data, method="class",parms = list(split = 'information'))
+printcp(rpModel1)
+plotcp(rpModel1)
+rpart.plot::prp(rpModel1, type=2, extra=1, main = "Decision Tree for German Credit Scoring - Entire Data")
+
+### Confusion matrix to calculate the accuracy of rpModel1
+predTrn_whole=predict(rpModel1, data=GC_F18_data, type='class')
+#Confusion table
+table(pred = predTrn_whole, true=GC_F18_data$RESPONSE)
+#Accuracy
+mean(predTrn_whole==GC_F18_data$RESPONSE)
+summary(rpModel1)
+
+lift.chart <- lift.chart(RESPONSE ~ . , data= GC_F18_data)
+
+##ROC and lift charts for rpmodel1
+
+
+library(ROCR)
+#score test data set
+GC_F18_data$score<-predict(rpModel1,type='prob',GC_F18_data)
+pred<-prediction(GC_F18_data$score[,2],GC_F18_data$RESPONSE)
+perf <- performance(pred,"tpr","fpr")
+plot(perf)
+
+auc.perf <- performance(pred, measure = 'auc')
+auc.perf@y.values
+
+```
+
+```{R}
+
+
+###rpModel11
+
+rpModel11 <-rpart(RESPONSE ~ ., data=GC_F18_data, method="class",parms = list(split = 'information'))
+rpart.plot::prp(rpModel11, type=2, extra=1, main="Decision Tree with mini for German Credit Scoring - Entire Data")
+
+####Confusion matrix for Model11
+predTrn_whole=predict(rpModel11, data=GC_F18_data, type='class')
+#Confusion table
+table(pred = predTrn_whole, true=GC_F18_data$RESPONSE)
+#Accuracy
+mean(predTrn_whole==GC_F18_data$RESPONSE)
+
+
+#score test entire data set Model11
+GC_F18_data$score<-predict(rpModel11,type='prob',GC_F18_data)
+pred<-prediction(GC_F18_data$score[,2],GC_F18_data$RESPONSE)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, main="ROC Curve")
+
+summary(rpModel11)
+```
+
+
+```{R}
+
+###rpModel2- Decision tree with GINI
+
+rpModel2=rpart(RESPONSE ~ ., data=GC_F18_data, method="class", parms = list(split = 'gini'))
+rpart.plot::prp(rpModel2, type=2, extra=1, main="Decision Tree with mini for German Credit Scoring - Entire Data1")
+
+
+####Confusion matrix for rpModel2
+predTrn_whole=predict(rpModel2, data=GC_F18_data, type='class')
+#Confusion table
+table(pred = predTrn_whole, true=GC_F18_data$RESPONSE)
+#Accuracy
+mean(predTrn_whole==GC_F18_data$RESPONSE)
+
+##ROC for model2
+
+GC_F18_data$score<-predict(rpModel2,type='prob',GC_F18_data)
+pred<-prediction(GC_F18_data$score[,2],GC_F18_data$RESPONSE)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, main='ROC Curve')
+
+summary(rpModel2)
+
+```
+
+
+```{r}
+library(C50)
+cModel1<- C5.0(RESPONSE ~ ., data=GC_F18_data, method="class", minsplit= 100, parms= list(split='information'))
+summary(cModel1)
+#Replace rpart function by C5.0 to build the tree
+plot(cModel1, uniform=TRUE,  main="Decision Tree")
+text(rpModel1, use.n=TRUE, all=TRUE, cex=.7)
+
+```
+
+
+```{R}
+
+##Splitting the data into training and Test data 50:50
+
+nr=nrow(GC_F18_data)
+trnIndex = sample(1:nr, size = round(0.5*nr), replace=FALSE)
+GCTrn=GC_F18_data[trnIndex,] 
+GCTst=GC_F18_data[-trnIndex,]
+
+dim(GCTrn) 
+dim(GCTst)
+```
+
+
+```{R}
+##Decision tree for training and Test data, 50:50 Split
+
+set.seed(123)
+rpModel5=rpart(RESPONSE ~ ., data=GCTrn, method="class", minsplit= 100, parms = list(split='information'))
+#rpModel5p <- prune(rpModel5, cp=0.06) ##pruning via CP
+rpart.plot::prp(rpModel5, type=2, extra=1, main = "Decision Tree for German Credit Scoring - 50:50 - Train")
+##accuracy levels for train
+
+predTrn=predict(rpModel5, GCTrn, type='class')
+table(pred = predTrn, true=GCTrn$RESPONSE)
+mean(predTrn==GCTrn$RESPONSE)
+
+##accuracy levels for test
+
+predTst=predict(rpModel5, GCTst, type='class')
+table( pred= predTst, true=GCTst$RESPONSE)
+mean(predTst==GCTst$RESPONSE)
+
+```
+
+
+```{R}
+
+##F1 scores on the Test data Information
+cm <- table(pred=predict(rpModel5,GCTst, type="class"), true=GCTst$RESPONSE)
+print(cm)
+n = sum(cm) # number of instances
+diag = diag(cm) # number of correctly classified instances per class 
+rowsums = apply(cm, 2, sum) # number of instances per class
+colsums = apply(cm, 1, sum) # number of predictions per class
+p = rowsums / n # distribution of instances over the actual classes
+q = colsums / n # distribution of instances over the predicted classes
+accuracy = sum(diag) / n 
+accuracy
+precision = diag / colsums 
+recall = diag / rowsums 
+f1 = 2 * precision * recall / (precision + recall) 
+print(f1)
+```
+
+```{R}
+
+#####For GINI
+set.seed(123)
+rpModel51=rpart(RESPONSE ~ ., data=GCTrn, method="class",  parms = list(split = 'gini'))
+
+##accuracy levels for training data
+
+predTrn=predict(rpModel5, GCTrn, type='class')
+table(pred = predTrn, true=GCTrn$RESPONSE)
+mean(predTrn==GCTrn$RESPONSE)
+rpart.plot::prp(rpModel5, type=2, extra=1, main = "Decision Tree for German Credit Scoring - 50:50 - Train")
+
+
+##accuracy levels for test data
+predTst=predict(rpModel5,GCTst, type='class')
+table(pred = predTst, true=GCTst$RESPONSE)
+mean(predTst==GCTst$RESPONSE)
+```
+
+```{R}
+##F1 scores on the Test data Information
+cm <- table(pred=predict(rpModel51,GCTst, type="class"), true=GCTst$RESPONSE)
+print(cm)
+n = sum(cm) # number of instances
+diag = diag(cm) # number of correctly classified instances per class 
+rowsums = apply(cm, 2, sum) # number of instances per class
+colsums = apply(cm, 1, sum) # number of predictions per class
+p = rowsums / n # distribution of instances over the actual classes
+q = colsums / n # distribution of instances over the predicted classes
+accuracy = sum(diag) / n 
+accuracy
+precision = diag / colsums 
+recall = diag / rowsums 
+f1 = 2 * precision * recall / (precision + recall) 
+print(f1)
+```
+
+
+```{R}
+##Splitting the data into training and Test data 80:20
+
+nr=nrow(GC_F18_data)
+trnIndex = sample(1:nr, size = round(0.8*nr), replace=FALSE)
+GCTrn=GC_F18_data[trnIndex,] 
+GCTst=GC_F18_data[-trnIndex,]
+
+dim(GCTrn) 
+dim(GCTst)
+
+```
+
+```{R}
+##Decision tree for training and Test data, 80:20 Split
+library("C50")
+set.seed(123)
+rpModel8=rpart(RESPONSE ~ ., data = GCTrn, method="class", minsplit= 100, parms = list(split='information'))
+plot(rpModel8)
+rpart.plot::prp(rpModel8, type=2, extra=1, main = "Decision Tree for German Credit Scoring - 80:20 - Train")
+##accuracy levels for train
+
+predTrn=predict(rpModel8, GCTrn, type='class')
+table(pred = predTrn, true=GCTrn$RESPONSE)
+mean(predTrn==GCTrn$RESPONSE)
+
+##accuracy levels for test data
+predTst=predict(rpModel8, GCTst, type='class')
+table(pred = predTst, true=GCTst$RESPONSE)
+mean(predTst==GCTst$RESPONSE)
+
+```
+
+```{R}
+##accuracy levels for test and ##F1 value
+cm <- table(pred=predict(rpModel8,GCTst, type="class"), true=GCTst$RESPONSE)
+print(cm)
+n = sum(cm) # number of instances
+diag = diag(cm) # number of correctly classified instances per class 
+rowsums = apply(cm, 2, sum) # number of instances per class
+colsums = apply(cm, 1, sum) # number of predictions per class
+p = rowsums / n # distribution of instances over the actual classes
+q = colsums / n # distribution of instances over the predicted classes
+accuracy = sum(diag) / n 
+accuracy
+precision = diag / colsums 
+recall = diag / rowsums 
+f1 = 2 * precision * recall / (precision + recall) 
+print(f1)
+```
+
+```{R}
+##Decision tree for training and Test data, 80:20 Split
+
+set.seed(123)
+rpModel81=rpart(RESPONSE ~ ., data=GCTrn, method="class", minsplit= 100, parms = list(split='gini'))
+
+rpart.plot::prp(rpModel81, type=2, extra=1, main = "Decision Tree for German Credit Scoring - 80:20 - Train")
+##accuracy levels for train
+
+predTrn=predict(rpModel81, GCTrn, type='class')
+table(pred = predTrn, true=GCTrn$RESPONSE)
+mean(predTrn==GCTrn$RESPONSE)
+
+##accuracy levels for test and ##F1 value
+cm <- table(pred=predict(rpModel81,GCTst, type="class"), true=GCTst$RESPONSE)
+print(cm)
+n = sum(cm) # number of instances
+diag = diag(cm) # number of correctly classified instances per class 
+rowsums = apply(cm, 2, sum) # number of instances per class
+colsums = apply(cm, 1, sum) # number of predictions per class
+p = rowsums / n # distribution of instances over the actual classes
+q = colsums / n # distribution of instances over the predicted classes
+accuracy = sum(diag) / n 
+accuracy
+precision = diag / colsums 
+recall = diag / rowsums 
+f1 = 2 * precision * recall / (precision + recall) 
+print(f1)
+```
+
+
+```{R}
+CTHRESH=0.4
+
+predProbTrn=predict(rpModel1, GCTst, type='prob')
+#Confusion table
+predTrn = ifelse(predProbTrn[,'1'] >= CTHRESH, '1', '0')
+ct = table( pred = predTrn, true=GCTst$RESPONSE)
+#Accuracy
+mean(predTrn==GCTst$RESPONSE)
+```
+
+```{R}
+##Splitting the data into training and Test data 70:30
+
+nr=nrow(GC_F18_data)
+trnIndex = sample(1:nr, size = round(0.7*nr), replace=FALSE)
+GCTrn=GC_F18_data[trnIndex,] 
+GCTst=GC_F18_data[-trnIndex,]
+
+dim(GCTrn) 
+dim(GCTst)
+
+
+```
+
+```{R}
+
+set.seed(123)
+rpModel7=rpart(RESPONSE ~ ., data = GCTrn, method="class", minsplit= 100, parms = list(split='information'))
+plot(rpModel7)
+rpart.plot::prp(rpModel7, type=2, extra=1, main = "Decision Tree for German Credit Scoring - 80:20 - Train")
+##accuracy levels for train
+
+predTrn=predict(rpModel7, GCTrn, type='class')
+table(pred = predTrn, true=GCTrn$RESPONSE)
+mean(predTrn==GCTrn$RESPONSE)
+
+##accuracy levels for test data
+predTst=predict(rpModel7, data=GCTst, type='class')
+table(pred = predTst,true=GCTst$RESPONSE)
+mean(predTst==GCTst$RESPONSE)
+
+
+```
+
+
+```{R}
+
+cm <- table(pred=predict(rpModel7,GCTst, type="class"), true=GCTst$RESPONSE)
+print(cm)
+n = sum(cm) # number of instances
+diag = diag(cm) # number of correctly classified instances per class 
+rowsums = apply(cm, 2, sum) # number of instances per class
+colsums = apply(cm, 1, sum) # number of predictions per class
+p = rowsums / n # distribution of instances over the actual classes
+q = colsums / n # distribution of instances over the predicted classes
+accuracy = sum(diag) / n 
+accuracy
+precision = diag / colsums 
+recall = diag / rowsums 
+f1 = 2 * precision * recall / (precision + recall) 
+print(f1)
+```
+
+
+```{R}
+set.seed(123)
+rpModel71=rpart(RESPONSE ~ ., data = GCTrn, method="class", parms = list(split='gini'))
+plot(rpModel71)
+rpart.plot::prp(rpModel71, type=2, extra=1, main = "Decision Tree for German Credit Scoring - 70:30 - Train")
+##accuracy levels for train
+
+predTrn=predict(rpModel71, GCTrn, type='class')
+table(pred = predTrn, true=GCTrn$RESPONSE)
+mean(predTrn==GCTrn$RESPONSE)
+
+##accuracy levels for test data
+predTst=predict(rpModel71, GCTst, type='class')
+table(pred = predTst, true=GCTst$RESPONSE)
+mean(predTst==GCTst$RESPONSE)
+```
+
+
+```{R}
+cm <- table(pred=predict(rpModel71,GCTst, type="class"), true=GCTst$RESPONSE)
+print(cm)
+n = sum(cm) # number of instances
+diag = diag(cm) # number of correctly classified instances per class 
+rowsums = apply(cm, 2, sum) # number of instances per class
+colsums = apply(cm, 1, sum) # number of predictions per class
+p = rowsums / n # distribution of instances over the actual classes
+q = colsums / n # distribution of instances over the predicted classes
+accuracy = sum(diag) / n 
+accuracy
+precision = diag / colsums 
+recall = diag / rowsums 
+f1 = 2 * precision * recall / (precision + recall) 
+print(f1)
+
+```
+
+
+```{R}
+costMatrix <- matrix(c(0,1,5, 0), byrow=TRUE, nrow=2)
+colnames(costMatrix) <- c('Predict Good','Predict Bad')
+rownames(costMatrix) <- c('Actual Good','Actual Bad')
+costMatrix
+
+rpTree = rpart(RESPONSE ~ ., data=GCTrn, method="class", parms = list( prior = c(.70,.30), loss = costMatrix, split = "gini"))
+rpart.plot::prp(rpTree, type=2, extra=1, main = "Decision Tree for German Credit Scoring - 70:30 - Misclassification costs")
+
+summary(rpTree)
+
+CTHRESH=0.65
+
+predProbTrn=predict(rpTree, GCTrn, type='prob')
+#Confusion table
+predTrn = ifelse(predProbTrn[,'1'] >= CTHRESH, '1', '0')
+ct = table( pred = predTrn, true=GCTrn$RESPONSE)
+#Accuracy
+mean(predTrn==GCTrn$RESPONSE)
+
+predProbTst=predict(rpTree, GCTst, type='prob')
+#Confusion table
+predTst = ifelse(predProbTst[,'1'] >= CTHRESH, '1', '0')
+ct = table( pred = predTst, true=GCTst$RESPONSE)
+#Accuracy
+mean(predTst==GCTrn$RESPONSE)
+
+
+library(ROCR)
+#score test data set
+
+
+predProbTst=predict(rpTree, GCTst, type='prob')
+#Confusion table
+predTst = ifelse(predProbTst[,'1'] >= CTHRESH, '1', '0')
+pred<-prediction(predTst[,2],GCTst$RESPONSE)
+perf <- performance(pred,"tpr","fpr")
+plot(perf)
+
+th = costMatrix[2,1]/(costMatrix[2,1] + costMatrix[1,2])
+th
+
+auc.perf <- performance(pred, measure = 'auc')
+auc.perf@y.values
+
+```
+
+
+```{R}
+ install.packages('dplyr')
+library(dplyr)
+
+PROFITVAL=100
+COSTVAL=-500
+
+scoreTst=predict(rpModel71,GCTst, type="prob")[,'1'] 
+prLifts=data.frame(scoreTst)
+prLifts=cbind(prLifts, GCTst$RESPONSE)
+     #check what is in prLifts ....head(prLifts)
+
+prLifts=prLifts[order(-scoreTst) ,]  #sort by descending score
+
+#add profit and cumulative profits columns
+prLifts<-prLifts %>% mutate(profits=ifelse(prLifts$`GCTst$RESPONSE`=='1', PROFITVAL, COSTVAL), cumProfits=cumsum(profits))
+
+plot(prLifts$cumProfits)
+
+#find the score coresponding to the max profit
+maxProfit= max(prLifts$cumProfits)
+maxProfit_Ind = which.max(prLifts$cumProfits)
+maxProfit_score = prLifts$scoreTst[maxProfit_Ind]
+print(c(maxProfit = maxProfit, scoreTst = maxProfit_score))
+```
+```{r}
+library('randomForest')
+
+#for reproducible results, set a specific value for the random number seed
+set.seed(123)
+GCTrn.imputed <- rfImpute(RESPONSE ~ ., data=GCTrn)
+#develop a model with 200 trees, and obtain variable importance
+rfModel = randomForest(factor(RESPONSE) ~ .,data=GCTrn.imputed, ntree=200, importance=TRUE )
+#check the model -- see what OOB error rate it gives
+
+#Variable importance
+a <- importance(rfModel)
+varImpPlot(rfModel)
+
+#Draw the ROC curve for the randomForest model
+perf_rf=performance(prediction(predict(rfModel,GCTst, type="prob")[,2], GCTst$RESPONSE), "tpr", "fpr")
+plot(perf_rf)
+```
+
+
+
+
+
+
+
+
+
+
+
+
